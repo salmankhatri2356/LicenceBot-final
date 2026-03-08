@@ -245,3 +245,72 @@ async def admin_bc_send(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"📢 Broadcast done!\n✅ Sent: {sent}\n❌ Failed: {failed}",
         reply_markup=kb_admin())
     return ConversationHandler.END
+
+
+# ── Aliases / missing functions ──────────────────────────────
+async def dashboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await admin_stats(update, ctx)
+
+async def all_apps_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return
+    agents  = all_agents()
+    total   = 0
+    pending = 0
+    done    = 0
+    for ag in agents:
+        for ap in all_apps(ag):
+            total += 1
+            if ap.get("status") == "PENDING":
+                pending += 1
+            elif ap.get("status") == "DONE":
+                done += 1
+    await update.message.reply_text(
+        f"📋 *All Applications*\n{divider()}\n"
+        f"📊 Total: {total}\n"
+        f"⏳ Pending: {pending}\n"
+        f"✅ Done: {done}",
+        parse_mode=ParseMode.MARKDOWN, reply_markup=kb_admin())
+
+async def all_payments_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return
+    agents  = all_agents()
+    total   = 0
+    pending = 0
+    paid    = 0
+    for ag in agents:
+        for p in all_payments(ag):
+            total += 1
+            st = p.get("status","").upper()
+            if st == "PENDING":
+                pending += 1
+            elif st == "PAID":
+                paid += 1
+    await update.message.reply_text(
+        f"💰 *All Payments*\n{divider()}\n"
+        f"📊 Total: {total}\n"
+        f"⏳ Pending: {pending}\n"
+        f"✅ Paid: {paid}",
+        parse_mode=ParseMode.MARKDOWN, reply_markup=kb_admin())
+
+async def logs_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return
+    await update.message.reply_text(
+        "📜 Logs FOS_Master sheet ke 'logs' tab mein hain.",
+        reply_markup=kb_admin())
+
+async def monthly_report(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return
+    agents = all_agents()
+    mon    = month_ist()
+    t_apps = sum(safe_int(a.get("total_apps",0)) for a in agents)
+    t_clts = sum(safe_int(a.get("total_clients",0)) for a in agents)
+    await update.message.reply_text(
+        f"📅 *Monthly Report — {mon}*\n{divider()}\n"
+        f"👥 Agents: {len(agents)}\n"
+        f"👤 Clients: {t_clts}\n"
+        f"📋 Apps: {t_apps}",
+        parse_mode=ParseMode.MARKDOWN, reply_markup=kb_admin())
