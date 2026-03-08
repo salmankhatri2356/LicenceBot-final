@@ -16,7 +16,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound
 
-from config import GOOGLE_CREDS, SCOPES, MASTER_SHEET, TRIAL_DAYS, ADMIN_GMAIL, DRIVE_FOLDER
+from config import GOOGLE_CREDS, SCOPES, MASTER_SHEET, TRIAL_DAYS, ADMIN_GMAIL
 from utils import now_ist, safe_float, safe_int, IST
 
 logger = logging.getLogger(__name__)
@@ -100,78 +100,15 @@ class DB:
                 logger.error(f"db: open({name}): {e}")
                 return None
 
-    # ── Get or create Drive folder ────────────────────────────
-    def _get_or_create_folder(self, folder_name: str) -> str | None:
-        """Returns folder_id of the named folder (creates if not exists)."""
-        try:
-            drive = self._gc_client().auth.authorized_session if hasattr(self._gc_client(), 'auth') else None
-            # Use Drive API via requests
-            import requests
-            token = self._gc_client().auth.token
-            headers = {"Authorization": f"Bearer {token}"}
-
-            # Search for folder
-            q = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-            r = requests.get(
-                "https://www.googleapis.com/drive/v3/files",
-                headers=headers,
-                params={"q": q, "fields": "files(id,name)"}
-            )
-            files = r.json().get("files", [])
-            if files:
-                return files[0]["id"]
-
-            # Create folder
-            r = requests.post(
-                "https://www.googleapis.com/drive/v3/files",
-                headers={**headers, "Content-Type": "application/json"},
-                json={"name": folder_name,
-                      "mimeType": "application/vnd.google-apps.folder"}
-            )
-            return r.json().get("id")
-        except Exception as e:
-            logger.warning(f"_get_or_create_folder: {e}")
-            return None
-
-    def _move_to_folder(self, file_id: str, folder_id: str):
-        """Move a sheet into a Drive folder."""
-        try:
-            import requests
-            token = self._gc_client().auth.token
-            headers = {"Authorization": f"Bearer {token}"}
-            # Get current parents
-            r = requests.get(
-                f"https://www.googleapis.com/drive/v3/files/{file_id}",
-                headers=headers,
-                params={"fields": "parents"}
-            )
-            parents = r.json().get("parents", [])
-            remove_parents = ",".join(parents)
-            requests.patch(
-                f"https://www.googleapis.com/drive/v3/files/{file_id}",
-                headers=headers,
-                params={"addParents": folder_id, "removeParents": remove_parents,
-                        "fields": "id,parents"}
-            )
-        except Exception as e:
-            logger.warning(f"_move_to_folder: {e}")
-
     # ── Create new sheet ─────────────────────────────────────
     def create(self, name: str):
         try:
             sh = self._gc_client().create(name)
             try:
                 sh.share(ADMIN_GMAIL, perm_type="user", role="writer")
-            except Exception:
-                pass
-            # Move to Drive folder
-            try:
-                folder_id = self._get_or_create_folder(DRIVE_FOLDER)
-                if folder_id:
-                    self._move_to_folder(sh.id, folder_id)
-                    logger.info(f"db: moved '{name}' to folder '{DRIVE_FOLDER}'")
+                logger.info(f"db: shared '{name}' with {ADMIN_GMAIL}")
             except Exception as e:
-                logger.warning(f"db: folder move failed: {e}")
+                logger.warning(f"db: share failed: {e}")
             logger.info(f"db: created sheet '{name}'")
             return sh
         except Exception as e:
