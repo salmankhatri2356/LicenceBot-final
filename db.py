@@ -332,7 +332,7 @@ class DB:
 
             n      = len(HDR.get(tab, []))
 
-            reqs   = []
+reqs   = []
 
 
 
@@ -898,8 +898,6 @@ def get_setting(agent: dict, key: str) -> str:
 
     return ""
 
-
-
 def put_setting(agent: dict, key: str, value: str) -> bool:
 
     try:
@@ -1150,4 +1148,289 @@ def add_app(agent: dict, data: dict) -> bool:
 
             return False
 
-        row = [data["app_id"
+        row = [data["app_id"], data["app_no"], data["dob"], data["password"],
+
+               data["client_code"], agent.get("agent_id",""),
+
+               now_ist(), "PENDING", "", ""]
+
+        w.append_row(row)
+
+        n = len(w.get_all_values())
+
+        db.color_row(w, n, "PENDING")
+
+        try:
+
+            cur = safe_int(agent.get("total_apps",0))
+
+            set_agent_field(agent["agent_id"], "total_apps", cur+1)
+
+        except Exception:
+
+            pass
+
+        return True
+
+    except Exception as e:
+
+        logger.error(f"add_app: {e}")
+
+        return False
+
+
+
+def mark_done(agent: dict, app_id: str) -> bool:
+
+    w = _w(agent, "applications")
+
+    if w is None:
+
+        return False
+
+    ok = db.update_field(w, 0, app_id, "status", "DONE")
+
+    db.update_field(w, 0, app_id, "done_at", now_ist())
+
+    if ok:
+
+        ri, _ = db.find_row(w, 0, app_id)
+
+        if ri:
+
+            db.color_row(w, ri, "DONE")
+
+    return ok
+
+
+
+
+
+# ================================================================
+
+# PAYMENTS
+
+# ================================================================
+
+
+
+def all_payments(agent: dict) -> list:
+
+    w = _w(agent, "payments")
+
+    return db.rows_to_dicts(w) if w else []
+
+
+
+def add_payment(agent: dict, data: dict) -> bool:
+
+    try:
+
+        w = _w(agent, "payments")
+
+        if w is None:
+
+            return False
+
+        now = datetime.now(IST)
+
+        row = [data["pay_id"], data["client_code"], data["amount"], "",
+
+               now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"),
+
+               "PENDING", "", ""]
+
+        w.append_row(row)
+
+        n = len(w.get_all_values())
+
+        db.color_row(w, n, "PENDING")
+
+        return True
+
+    except Exception as e:
+
+        logger.error(f"add_payment: {e}")
+
+        return False
+
+
+
+def approve_payment(agent: dict, pay_id: str, approved_by: str) -> bool:
+
+    w = _w(agent, "payments")
+
+    if w is None:
+
+        return False
+
+    for f, v in [("status","PAID"),("approved_by",approved_by),("approved_at",now_ist())]:
+
+        db.update_field(w, 0, pay_id, f, v)
+
+    ri, _ = db.find_row(w, 0, pay_id)
+
+    if ri:
+
+        db.color_row(w, ri, "PAID")
+
+    return True
+
+
+
+def reject_payment(agent: dict, pay_id: str) -> bool:
+
+    w = _w(agent, "payments")
+
+    if w is None:
+
+        return False
+
+    db.update_field(w, 0, pay_id, "status", "REJECTED")
+
+    ri, _ = db.find_row(w, 0, pay_id)
+
+    if ri:
+
+        db.color_row(w, ri, "REJECTED")
+
+    return True
+
+
+
+
+
+# ================================================================
+
+# detect_role
+
+# ================================================================
+
+
+
+def detect_role(tid: int) -> str:
+
+    from config import SUPER_ADMIN_ID
+
+    if tid == SUPER_ADMIN_ID:
+
+        return "admin"
+
+    if agent_by_tid(tid):
+
+        return "agent"
+
+    c, _ = find_client(tid)
+
+    if c:
+
+        return "client"
+
+    return "unknown"
+
+
+
+
+
+# ================================================================
+
+# setup_manual_sheet — for manually created agent sheets
+
+# ================================================================
+
+
+
+def setup_manual_sheet(sheet_name: str, agent_id: str, agent_name: str, rate: float) -> bool:
+
+    """
+
+    Verify manually created sheet exists + create/setup all tabs.
+
+    Returns True if successful, False if sheet not found.
+
+    """
+
+    sh = db.open(sheet_name)
+
+    if sh is None:
+
+        logger.error(f"setup_manual_sheet: sheet '{sheet_name}' not found")
+
+        return False
+
+
+
+    # Setup each tab
+
+    for tab in ("clients", "applications", "payments", "settings"):
+
+        try:
+
+            existing = db.ws(sh, tab)
+
+            if existing is None:
+
+                # Create tab with header + formatting
+
+                db._ensure(sh, tab)
+
+                logger.info(f"Created tab '{tab}' in '{sheet_name}'")
+
+            else:
+
+                # Check if header exists, if not add it
+
+                rows = existing.get_all_values()
+
+                if not rows or rows[0] != HDR[tab]:
+
+                    existing.clear()
+
+                    existing.append_row(HDR[tab])
+
+                    db._fmt(existing, tab)
+
+                    logger.info(f"Fixed header for tab '{tab}' in '{sheet_name}'")
+
+        except Exception as e:
+
+            logger.error(f"setup_manual_sheet tab {tab}: {e}")
+
+            return False
+
+
+
+    # Seed settings
+
+    try:
+
+        sw   = db.ws(sh, "settings")
+
+        rows = db.rows_to_dicts(sw)
+
+        keys = {r.get("key","") for r in rows}
+
+        for k, v in [("rate_per_app", str(rate)),
+
+                     ("qr_file_id",   ""),
+
+                     ("agent_name",   agent_name),
+
+                     ("agent_id",     agent_id)]:
+
+            if k not in keys:
+
+                sw.append_row([k, v])
+
+    except Exception as e:
+
+        logger.error(f"setup_manual_sheet settings seed: {e}")
+
+
+
+    logger.info(f"setup_manual_sheet: '{sheet_name}' ready for agent {agent_id}")
+
+    return True
+
+
+
