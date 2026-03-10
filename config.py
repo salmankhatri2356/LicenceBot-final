@@ -2,7 +2,7 @@ import os, json
 
 
 
-BOT_TOKEN      = os.environ.get("BOT_TOKEN", "8555471297:AAFNAyi8VBIERtoHrA46z47cdOcK5sznZ6g")
+BOT_TOKEN      = os.environ.get("BOT_TOKEN", "")
 
 SUPER_ADMIN_ID = int(os.environ.get("SUPER_ADMIN_ID", "6806779180"))
 
@@ -59,7 +59,6 @@ else:
 (ABC_TYPE, ABC_MSG)                  = range(50, 52)
 
 UR_RATE = 60
-
 
 
 
